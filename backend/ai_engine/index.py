@@ -6,12 +6,13 @@ from llama_index.vector_stores.faiss import FaissVectorStore
 from llama_index.core.node_parser import SimpleNodeParser
 from llama_index.core.schema import TextNode
 import faiss
+import json
 from utils import get_chunked_documents
 from config import configure_settings
 from datetime import datetime
 
 # Constants
-STORAGE_DIR = "storage"
+STORAGE_DIR = "data/faiss"
 DATASHEET_DIR = "data/datasheets"
 FAISS_INDEX_PATH = "data/faiss/faiss_index.index"
 
@@ -35,20 +36,68 @@ def build_index():
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
     # Build index with nodes and ensure text is stored
-    index = VectorStoreIndex(nodes, storage_context=storage_context, show_progress=True)
-    os.makedirs(os.path.dirname(FAISS_INDEX_PATH), exist_ok=True)
+    index = VectorStoreIndex(
+        nodes,
+        storage_context=storage_context,
+        show_progress=True,
+        store_nodes_override=True  # Ensure text is stored
+    )
+    os.makedirs(STORAGE_DIR, exist_ok=True)
+    
+    # Persist with atomic writes to prevent corruption
+    temp_path = os.path.join(STORAGE_DIR, "temp_index")
+    storage_context.persist(persist_dir=temp_path)
+    
+    # Atomic move to final location
+    for f in os.listdir(temp_path):
+        os.rename(
+            os.path.join(temp_path, f),
+            os.path.join(STORAGE_DIR, f)
+        )
+    os.rmdir(temp_path)
+    
+    # Save FAISS index separately
     faiss.write_index(faiss_index, FAISS_INDEX_PATH)
-    storage_context.persist(persist_dir=STORAGE_DIR)  # Corrected persist call
+    # Also save the FAISS index separately
+    os.makedirs(STORAGE_DIR, exist_ok=True)
+    faiss.write_index(faiss_index, FAISS_INDEX_PATH)
     logger.info(f"Index built and saved at {datetime.now().isoformat()}")
     return index
+
+def validate_index_files():
+    """Validate all index files exist and are not corrupted"""
+    try:
+        required_files = [
+            FAISS_INDEX_PATH,
+            os.path.join(STORAGE_DIR, "docstore.json"),
+            os.path.join(STORAGE_DIR, "index_store.json")
+        ]
+        for file in required_files:
+            if not os.path.exists(file):
+                logger.warning(f"Missing index file: {file}")
+                return False
+            try:
+                if file.endswith('.json'):
+                    with open(file, 'rb') as f:
+                        json.loads(f.read().decode('utf-8', errors='replace'))
+            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                logger.error(f"Corrupted index file {file}: {str(e)}")
+                return False
+        return True
+    except Exception as e:
+        logger.error(f"Index validation failed: {str(e)}")
+        return False
 
 def load_or_build_index():
     """Load existing index or build a new one if not found"""
     try:
-        if os.path.exists(FAISS_INDEX_PATH):
+        if validate_index_files():
             faiss_index = faiss.read_index(FAISS_INDEX_PATH)
             vector_store = FaissVectorStore(faiss_index=faiss_index)
-            storage_context = StorageContext.from_defaults(persist_dir=STORAGE_DIR, vector_store=vector_store)
+            storage_context = StorageContext.from_defaults(
+                persist_dir=STORAGE_DIR,
+                vector_store=vector_store
+            )
             index = VectorStoreIndex.from_vector_store(
                 vector_store,
                 storage_context=storage_context,
