@@ -1,0 +1,12 @@
+llama-index-core
+llama-index-vector-stores-faiss
+python-dotenv
+fastapi
+uvicorn
+httpx
+python-multipart
+pydantic
+numpy
+sentence-transformers
+pathlib
+tqdm
