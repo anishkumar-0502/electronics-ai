@@ -1,5 +1,6 @@
 llama-index-core
 llama-index-vector-stores-faiss
+llama-index-embeddings-huggingface
 python-dotenv
 fastapi
 uvicorn

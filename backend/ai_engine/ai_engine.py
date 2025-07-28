@@ -9,6 +9,8 @@ from llama_index.core import Settings
 from llama_index.core.retrievers import VectorIndexRetriever
 from llama_index.core.schema import TextNode
 from llama_index.core import StorageContext, load_index_from_storage
+from llama_index.vector_stores.faiss import FaissVectorStore
+from llama_index.core import VectorStoreIndex
 
 # Required files and directories
 REQUIRED_FILES = ["docstore.json", "index_store.json"]
@@ -41,7 +43,6 @@ STORAGE_DIR = Path(__file__).parent.parent / "data" / "faiss"
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 initialize_environment()
-
 def validate_storage_files():
     """Check if storage files exist and are valid JSON"""
     try:
@@ -52,9 +53,9 @@ def validate_storage_files():
                 logger.warning(f"Missing storage file: {file}")
                 return False
             try:
-                with open(file_path, 'rb') as f:
-                    json.loads(f.read().decode('utf-8', errors='replace'))
-            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    json.load(f)
+            except json.JSONDecodeError as e:
                 logger.error(f"Corrupted storage file {file}: {str(e)}")
                 return False
         return True
@@ -109,18 +110,23 @@ async def ask_ai_streaming(query: str):
         logger.error(f"Streaming query failed: {e}")
         yield "[Error] Something went wrong during response streaming"
 
+
+
 def learn_from_interaction(query: str, answer: str):
     """Append the Q&A to the index so the system learns from interactions."""
     try:
         if not validate_storage_files():
             logger.warning("Invalid storage files detected, initializing new index")
-            # Create fresh storage
             index = load_or_build_index()
             storage_context = index.storage_context
         else:
             try:
-                storage_context = StorageContext.from_defaults(persist_dir=str(STORAGE_DIR))
-                index = load_index_from_storage(storage_context)
+                vector_store = FaissVectorStore()
+                storage_context = StorageContext.from_defaults(
+                    persist_dir=str(STORAGE_DIR),
+                    vector_store=vector_store
+                )
+                index = VectorStoreIndex.load_from_storage(storage_context)
             except Exception as e:
                 logger.error(f"Failed to load index: {str(e)}")
                 logger.info("Rebuilding index due to load failure")
