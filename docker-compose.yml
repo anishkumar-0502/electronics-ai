@@ -1,0 +1,62 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "9001:9001"
+    volumes:
+      - ./backend:/app
+    networks:
+      default:
+        ipv4_address: 172.232.110.11
+    depends_on:
+      - redis
+      - ollama
+    environment:
+      - REDIS_URL=redis://172.232.110.12:9002
+      - OLLAMA_URL=http://172.232.110.13:11434
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./frontend:/app
+    networks:
+      default:
+        ipv4_address: 172.232.110.10
+
+  redis:
+    image: redis:latest
+    ports:
+      - "9002:9002"
+    volumes:
+      - redis-data:/data
+    networks:
+      default:
+        ipv4_address: 172.232.110.12
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      default:
+        ipv4_address: 172.232.110.13
+
+volumes:
+  redis-data:
+  ollama-data:
+
+networks:
+  default:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.232.110.0/24

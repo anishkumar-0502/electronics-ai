@@ -17,7 +17,7 @@ from ai_engine.ai_engine import ask_ai, ask_ai_streaming
 # Load environment variables
 load_dotenv()
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-REDIS_PORT = int(os.getenv("REDIS_PORT", 3505))
+REDIS_PORT = int(os.getenv("REDIS_PORT", 9002))
 REDIS_DB = int(os.getenv("REDIS_DB", 0))
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 
@@ -165,4 +165,4 @@ async def ask_stream(request: Request):
     return StreamingResponse(event_stream(), media_type="text/plain")
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=9001, reload=True)
