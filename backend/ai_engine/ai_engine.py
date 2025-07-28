@@ -8,9 +8,10 @@ from .index import load_or_build_index
 from llama_index.core import Settings
 from llama_index.core.retrievers import VectorIndexRetriever
 from llama_index.core.schema import TextNode
-from llama_index.core import StorageContext, load_index_from_storage
+from llama_index.core import StorageContext
 from llama_index.vector_stores.faiss import FaissVectorStore
 from llama_index.core import VectorStoreIndex
+import faiss
 
 # Required files and directories
 REQUIRED_FILES = ["docstore.json", "index_store.json"]
@@ -24,11 +25,11 @@ def initialize_environment():
         for dir_path in REQUIRED_DIRS:
             os.makedirs(base_dir / dir_path, exist_ok=True)
         
-        # Create empty files if they don't exist
+        # Create empty files if they don't exist (though not used with in-memory)
         for file in REQUIRED_FILES:
             file_path = base_dir / "data/faiss" / file
             if not file_path.exists():
-                with open(file_path, 'w') as f:
+                with open(file_path, 'w', encoding='utf-8') as f:
                     json.dump({}, f)
         
         logger.info("Environment initialized with required files and directories")
@@ -43,8 +44,9 @@ STORAGE_DIR = Path(__file__).parent.parent / "data" / "faiss"
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 initialize_environment()
+
 def validate_storage_files():
-    """Check if storage files exist and are valid JSON"""
+    """Check if storage files exist and are valid JSON (though not used with in-memory)"""
     try:
         required_files = ["docstore.json", "index_store.json"]
         for file in required_files:
@@ -69,7 +71,7 @@ def ask_ai(query: str) -> str:
     index = load_or_build_index()
     retriever = VectorIndexRetriever(
         index=index,
-        similarity_top_k=5,
+        similarity_top_k=5,  # Ensure recent data is retrieved
         vector_store_query_mode="default",
         alpha=0.5
     )
@@ -108,36 +110,19 @@ async def ask_ai_streaming(query: str):
             yield str(response)
     except Exception as e:
         logger.error(f"Streaming query failed: {e}")
-        yield "[Error] Something went wrong during response streaming"
-
-
+        yield "[Error] Something went wrong during response streaming]"
 
 def learn_from_interaction(query: str, answer: str):
     """Append the Q&A to the index so the system learns from interactions."""
     try:
-        if not validate_storage_files():
-            logger.warning("Invalid storage files detected, initializing new index")
-            index = load_or_build_index()
-            storage_context = index.storage_context
-        else:
-            try:
-                vector_store = FaissVectorStore()
-                storage_context = StorageContext.from_defaults(
-                    persist_dir=str(STORAGE_DIR),
-                    vector_store=vector_store
-                )
-                index = VectorStoreIndex.load_from_storage(storage_context)
-            except Exception as e:
-                logger.error(f"Failed to load index: {str(e)}")
-                logger.info("Rebuilding index due to load failure")
-                index = load_or_build_index()
-                storage_context = index.storage_context
+        index = load_or_build_index()  # Use the cached index
+        storage_context = index.storage_context  # Use the existing storage context
 
         combined_text = f"Q: {query}\nA: {answer}"
         node = TextNode(text=combined_text)
 
         index.insert_nodes([node])
-        storage_context.persist(persist_dir=str(STORAGE_DIR))
+        # No persist call since in-memory
 
         logger.info("✅ Learned from interaction and updated the index.")
     except Exception as e:
